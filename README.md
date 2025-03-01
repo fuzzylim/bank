@@ -1,4 +1,4 @@
-# Open Banking Dashboard
+# Open Bank Dashboard
 
 A modern, secure dashboard for interacting with Open Banking APIs. This dashboard allows you to connect to your bank accounts, view transactions, and manage your financial data all in one place.
 
