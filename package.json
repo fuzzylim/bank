@@ -1,12 +1,31 @@
 {
-  "name": "my-v0-project",
+  "name": "open-banking-dashboard",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "description": "A modern, secure dashboard for interacting with Open Banking APIs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/open-banking-dashboard.git"
+  },
+  "homepage": "https://github.com/yourusername/open-banking-dashboard#readme",
+  "bugs": {
+    "url": "https://github.com/yourusername/open-banking-dashboard/issues"
+  },
+  "keywords": [
+    "open-banking",
+    "fintech",
+    "dashboard",
+    "nextjs",
+    "react",
+    "tailwindcss"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prepare": "node scripts/update-version.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
