@@ -156,5 +156,17 @@ export const OBP_ENDPOINTS = {
     bank: (bankId: string) => OBP_ENDPOINTS.buildUrl(`/banks/${bankId}`),
     accounts: (bankId: string) => OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/accounts/private`),
     transactions: (bankId: string, accountId: string, viewId: string) =>
-        OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/accounts/${accountId}/${viewId}/transactions`)
+        OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/accounts/${accountId}/${viewId}/transactions`),
+
+    // Transaction operation endpoints
+    createTransactionRequest: (bankId: string, accountId: string, viewId: string, transactionRequestType: string) =>
+        OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/accounts/${accountId}/${viewId}/transaction-request-types/${transactionRequestType}/transaction-requests`),
+
+    // CounterpartyId is required for SEPA, COUNTERPARTY transfer types
+    createTransaction: (bankId: string, accountId: string, viewId: string) =>
+        OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/accounts/${accountId}/${viewId}/transactions`),
+
+    // For top-ups (used for adding funds to an account)
+    createTransfer: (bankId: string) =>
+        OBP_ENDPOINTS.buildUrl(`/banks/${bankId}/internal-transfers`)
 };

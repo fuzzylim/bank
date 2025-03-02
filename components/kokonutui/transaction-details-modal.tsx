@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { ArrowUpRight, ArrowDownLeft, CreditCard, Coffee, ShoppingCart, Car, Film } from "lucide-react"
+import { ArrowUpRight, ArrowDownLeft, CreditCard, Coffee, ShoppingCart, Car, Film, SendHorizontal, Wallet } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
@@ -89,6 +89,10 @@ export default function TransactionDetailsModal({
                 return <Car className="w-5 h-5" />
             case "entertainment":
                 return <Film className="w-5 h-5" />
+            case "transfer":
+                return <SendHorizontal className="w-5 h-5" />
+            case "deposit":
+                return <Wallet className="w-5 h-5" />
             default:
                 return <CreditCard className="w-5 h-5" />
         }
