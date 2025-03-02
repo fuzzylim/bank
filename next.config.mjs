@@ -16,11 +16,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    webpackBuildWorker: true,
-    parallelServerBuildTraces: true,
-    parallelServerCompiles: true,
-  },
+  // Next.js 15 configuration
+  output: 'standalone',
+  // Moved from experimental in Next.js 15
+  serverExternalPackages: ['better-sqlite3'],
 }
 
 mergeConfig(nextConfig, userConfig)

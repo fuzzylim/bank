@@ -1,6 +1,6 @@
 {
   "name": "open-banking-dashboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "A modern, secure dashboard for interacting with Open Banking APIs",
   "license": "MIT",
@@ -67,7 +67,7 @@
     "input-otp": "1.4.1",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.454.0",
-    "next": "14.2.16",
+    "next": "15.2.0",
     "next-themes": "^0.2.1",
     "react": "^18",
     "react-day-picker": "8.10.1",

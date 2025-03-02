@@ -4,13 +4,15 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import RootErrorBoundary from "@/components/root-error-boundary"
 import { Analytics } from '@vercel/analytics/react'
+import { Metadata } from 'next'
 
 const inter = Inter({ subsets: ["latin"] })
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "KokonutUI Dashboard",
   description: "A modern dashboard with theme switching",
-  generator: 'v0.dev'
+  generator: 'v0.dev',
+  metadataBase: new URL('https://localhost:3000'),
 }
 
 export default function RootLayout({
@@ -30,6 +32,3 @@ export default function RootLayout({
   )
 }
 
-
-
-import './globals.css'
