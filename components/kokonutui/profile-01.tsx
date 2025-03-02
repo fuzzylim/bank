@@ -35,7 +35,7 @@ export default function Profile01({
   avatar = defaultProfile.avatar,
   subscription = defaultProfile.subscription,
 }: Partial<Profile01Props> = defaultProfile) {
-  const { logout } = useBankingData()
+  const { logout, username } = useBankingData()
 
   const menuItems: MenuItem[] = [
     {
@@ -84,7 +84,9 @@ export default function Profile01({
 
             {/* Profile Info */}
             <div className="flex-1">
-              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{name}</h2>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+                {username ? (username.charAt(0).toUpperCase() + username.slice(1)) : name}
+              </h2>
               <p className="text-zinc-600 dark:text-zinc-400">{role}</p>
             </div>
           </div>

@@ -104,6 +104,7 @@ export function useBankingData() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [selectedBank, setSelectedBank] = useState<string>(DEFAULT_BANK_ID)
   const [authCheckComplete, setAuthCheckComplete] = useState<boolean>(false)
+  const [username, setUsername] = useState<string>("")
 
   // Generate more realistic financial goals based on account data
   const generateFinancialGoals = useCallback((accounts: Account[]): FinancialGoal[] => {
@@ -509,16 +510,22 @@ export function useBankingData() {
             if (testData.success && testData.authenticated) {
               console.log("Client-side token verified as authenticated");
               setIsAuthenticated(true);
-
               // Remove any logged out flag
               if (typeof window !== "undefined" && window.localStorage) {
                 window.localStorage.removeItem('logged_out');
+
+                // Try to retrieve username from localStorage
+                const savedUsername = window.localStorage.getItem('obp_username');
+                if (savedUsername) {
+                  setUsername(savedUsername);
+                }
               }
 
               // Fetch data immediately
               fetchData();
               setAuthCheckComplete(true);
 
+              // Redirect to dashboard if we're on the login page
               // Redirect to dashboard if we're on the login page
               if (isLoginPage) {
                 router.push("/dashboard");
@@ -559,6 +566,12 @@ export function useBankingData() {
               // Remove any logged out flag
               if (typeof window !== "undefined" && window.localStorage) {
                 window.localStorage.removeItem('logged_out');
+
+                // Try to retrieve username from localStorage
+                const savedUsername = window.localStorage.getItem('obp_username');
+                if (savedUsername) {
+                  setUsername(savedUsername);
+                }
               }
 
               // Fetch data immediately
@@ -595,6 +608,12 @@ export function useBankingData() {
                     // Remove any logged out flag
                     if (typeof window !== "undefined" && window.localStorage) {
                       window.localStorage.removeItem('logged_out');
+
+                      // Try to retrieve username from localStorage
+                      const savedUsername = window.localStorage.getItem('obp_username');
+                      if (savedUsername) {
+                        setUsername(savedUsername);
+                      }
                     }
 
                     fetchData();
@@ -646,7 +665,6 @@ export function useBankingData() {
 
   // Remove the second effect that was causing the infinite loop
   // The data fetching is now handled in the first effect and in the login function
-
   const login = async (username: string, password: string, preventRedirect = false): Promise<void> => {
     setIsLoading(true)
     setError(null)
@@ -662,6 +680,15 @@ export function useBankingData() {
 
       // Get token from API - this will also set it in the client and save to cookie
       const token = await obpApi.login(username, password)
+      console.log("Login successful, token received");
+
+      // Store the username in state
+      setUsername(username)
+
+      // Also store in localStorage for persistence across page reloads
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('obp_username', username);
+      }
       console.log("Login successful, token received");
 
       // Verify we have the token in a cookie for future page loads
@@ -719,9 +746,15 @@ export function useBankingData() {
       setTransactions([])
       setTotalBalance("$0.00")
       setIsAuthenticated(false)
+      setUsername("") // Clear username on logout
 
       // Explicitly reset token in DirectLoginClient immediately
       obpApi.setToken("");
+
+      // Clear username from localStorage
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('obp_username');
+      }
 
       // Clear all cache entries
       Object.keys(cache).forEach(key => {
@@ -833,6 +866,7 @@ export function useBankingData() {
     totalBalance,
     isAuthenticated,
     authCheckComplete,
+    username,
     login,
     logout,
     refreshData: fetchData,

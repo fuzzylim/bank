@@ -22,7 +22,8 @@ export default function DashboardContainer() {
     selectBank,
     logout,
     accounts,
-    transactions
+    transactions,
+    username
   } = useBankingData()
 
   const router = useRouter()
@@ -227,45 +228,6 @@ export default function DashboardContainer() {
         />
       )}
 
-      <div className="flex justify-between items-center mb-4 px-4 relative z-80">
-        {availableBanks.length > 1 && (
-          <div className="flex items-center lg:ml-64">
-            <span className="text-sm mr-2 text-gray-600 dark:text-gray-400">Bank:</span>
-            <Select value={selectedBank} onValueChange={handleBankChange}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select bank" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableBanks.map(bank => (
-                  <SelectItem key={bank.id} value={bank.id}>
-                    {bank.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        <Button
-          onClick={handleRefresh}
-          variant="outline"
-          size="sm"
-          disabled={isRefreshing}
-          className="ml-auto"
-        >
-          {isRefreshing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh Data
-            </>
-          )}
-        </Button>
-      </div>
 
       <Dashboard />
     </div>
