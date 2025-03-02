@@ -9,15 +9,24 @@ export interface OBPBank {
     website: string;
 }
 
+export interface OBPBalanceItem {
+    type: string;
+    amount: string;
+    currency?: string;
+}
+
 export interface OBPAccount {
     id: string;
     label: string;
     bank_id: string;
     account_type: string;
-    balance: {
+    // Support different balance formats that might be returned by the API
+    balance?: {
         amount: string;
         currency: string;
-    };
+    } | string;
+    // Some OBP API versions return an array of balances
+    balances?: OBPBalanceItem[];
     account_routings: Array<{
         scheme: string;
         address: string;

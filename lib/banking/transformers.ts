@@ -1,5 +1,34 @@
 import { trace } from "../tracing";
-import { Account, OBPAccount, OBPTransaction, Transaction } from "../types/obp-types";
+import { Account, OBPAccount, OBPBalanceItem, OBPTransaction, Transaction } from "../types/obp-types";
+
+/**
+ * Helper function to extract currency from different account balance formats
+ */
+const getCurrency = (account: OBPAccount): string => {
+    // Check different structures for currency
+    if (account.balance) {
+        if (typeof account.balance === 'object' && 'currency' in account.balance) {
+            return account.balance.currency;
+        }
+    }
+
+    // Check balances array
+    if (account.balances && Array.isArray(account.balances) && account.balances.length > 0) {
+        const mainBalance = account.balances.find(b => b.type === 'available' || b.type === 'current');
+        if (mainBalance && mainBalance.currency) {
+            return mainBalance.currency;
+        }
+
+        // If no specific balance type found, use the first one with a currency
+        const anyBalanceWithCurrency = account.balances.find(b => b.currency);
+        if (anyBalanceWithCurrency && anyBalanceWithCurrency.currency) {
+            return anyBalanceWithCurrency.currency;
+        }
+    }
+
+    // Default to USD if no currency found
+    return "USD";
+};
 
 /**
  * Transform OBP Accounts to our application's Account type
@@ -47,9 +76,24 @@ export const transformAccounts = (obpAccounts: OBPAccount[] | undefined): Accoun
         let formattedBalance = "0.00";
 
         try {
-            if (account.balance && account.balance.amount !== undefined) {
-                balanceAmount = parseFloat(account.balance.amount);
-                formattedBalance = balanceAmount.toFixed(2);
+            // Check for balance in different possible structures based on OBP API variations
+            if (account.balance) {
+                if (typeof account.balance === 'object' && 'amount' in account.balance) {
+                    // Standard OBP API structure
+                    balanceAmount = parseFloat(account.balance.amount);
+                    formattedBalance = balanceAmount.toFixed(2);
+                } else if (typeof account.balance === 'string') {
+                    // Some OBP instances might return balance as a direct string
+                    balanceAmount = parseFloat(account.balance);
+                    formattedBalance = balanceAmount.toFixed(2);
+                }
+            } else if (account.balances && Array.isArray(account.balances) && account.balances.length > 0) {
+                // Some OBP versions use a 'balances' array with different types
+                const mainBalance = account.balances.find(b => b.type === 'available' || b.type === 'current');
+                if (mainBalance && mainBalance.amount) {
+                    balanceAmount = parseFloat(mainBalance.amount);
+                    formattedBalance = balanceAmount.toFixed(2);
+                }
             } else {
                 trace.warn(`Account ${account.id} has invalid or missing balance data`);
                 // Ensure we set safe default values even when balance data is missing
@@ -80,7 +124,7 @@ export const transformAccounts = (obpAccounts: OBPAccount[] | undefined): Accoun
             title: account.label || "Unnamed Account",
             description: account.account_type || "",
             balance: formattedBalance,
-            currency: account.balance?.currency || "USD", // Default to USD if currency is missing
+            currency: getCurrency(account), // Get currency with helper function
             type,
             accountNumber: accountNumber,
             bankId: account.bank_id || "",
