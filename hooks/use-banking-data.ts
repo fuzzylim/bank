@@ -13,6 +13,7 @@ import {
   ConfigurationError,
 } from "@/lib/open-banking-api"
 import Cookies from "js-cookie"
+import { OBPApiError } from "@/lib/banking/errors"
 
 // Mock financial goals since they're not typically provided by banking APIs
 const MOCK_FINANCIAL_GOALS: FinancialGoal[] = [
@@ -214,9 +215,41 @@ export function useBankingData() {
       const bankId = selectedBank || banks[0]?.id || DEFAULT_BANK_ID;
       setSelectedBank(bankId);
 
-      // Get accounts with caching
+      // Get accounts with caching and retry for auth failures
       const accountsData: Array<any> | { accounts: Array<any> } = await getCachedOrFetch(`accounts-${bankId}`, async () => {
-        return await obpApi.getAccounts(bankId);
+        try {
+          return await obpApi.getAccounts(bankId);
+        } catch (error: unknown) {
+          // If we get an authentication error, try once more after forcing a token check
+          if (error instanceof OBPApiError && error.message === "Not authenticated") {
+            console.log("Authentication error getting accounts, attempting recovery...");
+
+            // Clear any stale token state
+            Cookies.remove("obp_token");
+            Cookies.remove("obp_token", { path: '/' });
+
+            // Force a fresh authentication check
+            const refreshResponse = await fetch(`/api/test-connection?client=true&refresh=true&_=${Date.now()}`, {
+              credentials: 'include',
+              headers: {
+                'Cache-Control': 'no-cache, no-store',
+                'Pragma': 'no-cache'
+              },
+              cache: 'no-store'
+            });
+
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json();
+              if (refreshData.authenticated) {
+                console.log("Authentication recovered, retrying accounts fetch");
+                return await obpApi.getAccounts(bankId);
+              }
+            }
+          }
+
+          // Re-throw the error if recovery failed or it's not an auth error
+          throw error;
+        }
       });
 
       // Handle both array format and {accounts: [...]} format
@@ -294,17 +327,30 @@ export function useBankingData() {
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       setTransactions(allTransactions)
       setIsAuthenticated(true)
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error fetching data:", err)
       if (err instanceof APIError) {
         if (err.status === 401) {
           Cookies.remove("obp_token")
+          Cookies.remove("obp_token", { path: '/' })
           setIsAuthenticated(false)
           router.push("/login")
           return
         }
         setError(err.message)
       } else if (err instanceof ConfigurationError) {
+        setError(err.message)
+      } else if (err instanceof OBPApiError) {
+        console.error("Failed to fetch banks:", err.message);
+        if (err.status === 401) {
+          Cookies.remove("obp_token")
+          Cookies.remove("obp_token", { path: '/' })
+          setIsAuthenticated(false)
+          router.push("/login")
+          return
+        }
+        setError(err.message);
+      } else if (err instanceof Error) {
         setError(err.message)
       } else {
         setError("Failed to fetch banking data. Please try again later.")

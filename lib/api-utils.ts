@@ -1,23 +1,19 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { trace, traceAsync } from "./tracing";
 
 export interface ApiResponse<T = any> {
     success: boolean;
     data?: T;
+    message?: string;
     error?: string;
-    status?: number;
-    details?: string;
 }
 
 /**
  * Standard error handling for API routes
  */
-export const handleApiError = (error: unknown): NextResponse<ApiResponse> => {
+export const handleApiError = (error: unknown): ApiResponse => {
     trace.error("API route error", error);
 
     let message = "Internal server error";
-    let status = 500;
 
     if (error instanceof Error) {
         message = error.message;
@@ -28,22 +24,17 @@ export const handleApiError = (error: unknown): NextResponse<ApiResponse> => {
     // Handle specific error types
     if (typeof error === "object" && error !== null) {
         if ("status" in error && typeof error.status === "number") {
-            status = error.status;
-        }
-
-        if (status === 401) {
-            message = "Authentication required";
-        } else if (status === 403) {
-            message = "Access denied";
-        } else if (status === 404) {
-            message = "Resource not found";
+            if (error.status === 401) {
+                message = "Authentication required";
+            } else if (error.status === 403) {
+                message = "Access denied";
+            } else if (error.status === 404) {
+                message = "Resource not found";
+            }
         }
     }
 
-    return NextResponse.json(
-        { success: false, error: message },
-        { status }
-    );
+    return { success: false, error: message };
 };
 
 /**
@@ -61,12 +52,19 @@ export const getAuthToken = (request: Request): { token: string | null; source: 
         }
     }
 
-    // Then try cookie
-    const cookieStore = cookies();
-    const tokenCookie = cookieStore.get("obp_token");
-    if (tokenCookie) {
-        trace.debug("Using token from HttpOnly cookie");
-        return { token: tokenCookie.value, source: "cookie" };
+    // Try to get token from cookies
+    const cookieHeader = request.headers.get("Cookie");
+    if (cookieHeader) {
+        const cookies = cookieHeader.split(';').map(cookie => cookie.trim());
+        const tokenCookie = cookies.find(cookie => cookie.startsWith('obp_token='));
+
+        if (tokenCookie) {
+            const tokenValue = tokenCookie.substring('obp_token='.length);
+            if (tokenValue) {
+                trace.debug("Using token from cookie");
+                return { token: tokenValue, source: "cookie" };
+            }
+        }
     }
 
     trace.debug("No authentication token found");
@@ -98,7 +96,7 @@ export const createApiHandler = <T, P extends Record<string, string> = {}>(
         authToken: string | null
     ) => Promise<T>
 ) => {
-    return async (request: Request, { params }: { params: P }): Promise<NextResponse> => {
+    return async (request: Request, { params }: { params: P }): Promise<ApiResponse> => {
         return traceAsync(
             `API ${request.method} ${request.url}`,
             async () => {
@@ -113,10 +111,7 @@ export const createApiHandler = <T, P extends Record<string, string> = {}>(
 
                     const result = await handler(request, params, token);
 
-                    return NextResponse.json({
-                        success: true,
-                        data: result
-                    });
+                    return { success: true, data: result };
                 } catch (error) {
                     return handleApiError(error);
                 }
