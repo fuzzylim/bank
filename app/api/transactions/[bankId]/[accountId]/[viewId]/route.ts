@@ -1,10 +1,12 @@
-import { OBP_ENDPOINTS, createApiHandler, getApiHeaders, ApiError } from "@/lib/api-utils";
+import { OBP_ENDPOINTS, getApiHeaders, getAuthToken, ApiError } from "@/lib/api-utils";
 import { trace } from "@/lib/tracing";
+import { NextResponse } from 'next/server';
 
-export const GET = createApiHandler(async (
-  request,
+// Create the handler that processes the request
+const transactionsHandler = async (
+  request: Request,
   params: { bankId: string; accountId: string; viewId: string },
-  authToken
+  authToken: string | null
 ) => {
   const { bankId, accountId, viewId } = params;
 
@@ -38,5 +40,28 @@ export const GET = createApiHandler(async (
     trace.warn("Unexpected data format received from OBP API");
     return { transactions: [] };
   }
-});
+};
+
+// Export the Next.js route handler that returns a Response object
+export async function GET(
+  request: Request,
+  { params }: { params: { bankId: string; accountId: string; viewId: string } }
+) {
+  try {
+    // Get auth token
+    const { token } = getAuthToken(request);
+
+    // Use our handler to process the request
+    const result = await transactionsHandler(request, params, token);
+
+    // Return the result as a NextResponse
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error(error);
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
 

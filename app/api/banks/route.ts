@@ -1,10 +1,12 @@
 import { OBP_ENDPOINTS, createApiHandler, getApiHeaders, getAuthToken, ApiError } from "@/lib/api-utils";
 import { trace } from "@/lib/tracing";
 import { cookies } from "next/headers";
+import { NextResponse } from 'next/server';
 
 const CONSUMER_KEY = process.env.OBP_CONSUMER_KEY;
 
-export const GET = createApiHandler(async (request, params, authToken) => {
+// Create the handler that processes the request
+const bankHandler = async (request: Request, params: Record<string, string>, authToken: string | null) => {
   // Get banks from OBP API
   let endpoint = OBP_ENDPOINTS.banks();
   let headers = getApiHeaders(authToken);
@@ -46,5 +48,25 @@ export const GET = createApiHandler(async (request, params, authToken) => {
   trace.info(`Returning banks response to client: format=${typeof resultToReturn}, hasData=${!!resultToReturn}, bankCount=${resultToReturn.banks?.length || 0}`);
 
   return resultToReturn;
-});
+};
+
+// Export the Next.js route handler that returns a Response object
+export async function GET(request: Request) {
+  try {
+    // Get auth token
+    const { token } = getAuthToken(request);
+
+    // Use our handler to process the request
+    const result = await bankHandler(request, {}, token);
+
+    // Return the result as a NextResponse
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error(error);
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
 

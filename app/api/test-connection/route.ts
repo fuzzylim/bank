@@ -6,14 +6,15 @@ import { OBP_ENDPOINTS, ApiError, getApiHeaders } from "@/lib/api-utils";
 export async function GET(request: Request) {
   return traceAsync("Test Connection API", async () => {
     try {
-      // Check if this is a client-side test request
+      // Check request parameters
       const { searchParams } = new URL(request.url);
       const isClientTest = searchParams.has('client');
+      const isRefreshRequest = searchParams.has('refresh');
 
-      trace.info("Test connection request", { isClientTest });
+      trace.info("Test connection request", { isClientTest, isRefreshRequest });
 
       // Check for authentication token in cookies
-      const cookieStore = cookies();
+      const cookieStore = await cookies();
       const token = cookieStore.get("obp_token");
       let isAuthenticated = false;
 
@@ -53,6 +54,31 @@ export async function GET(request: Request) {
           }
         } else {
           trace.info("No token found in cookie, not authenticated");
+
+          // For refresh requests, make an extra attempt using banks API
+          // This handles cases where the HttpOnly cookie exists but isn't detected in the normal flow
+          if (isRefreshRequest) {
+            try {
+              trace.info("Refresh requested - attempting to verify with banks API");
+              const banksResponse = await fetch(`/api/banks?_=${cacheBuster}`, {
+                method: 'GET',
+                headers: {
+                  'Cache-Control': 'no-cache, no-store',
+                  'Pragma': 'no-cache'
+                },
+                credentials: 'include',
+                cache: 'no-store'
+              });
+
+              if (banksResponse.ok) {
+                isAuthenticated = true;
+                trace.info("Authentication verified through banks API on refresh request");
+              }
+            } catch (refreshError) {
+              trace.error("Refresh authentication attempt failed",
+                refreshError instanceof Error ? refreshError : new Error(String(refreshError)));
+            }
+          }
         }
 
         // Set cache-control headers to prevent caching of authentication status
@@ -65,9 +91,10 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
           success: true,
-          message: "Client-side API connection successful",
+          message: isRefreshRequest ? "Authentication refresh attempt complete" : "Client-side API connection successful",
           version: "client",
           authenticated: isAuthenticated,
+          refreshed: isRefreshRequest,
           timestamp: new Date().toISOString() // Add timestamp to prevent response caching
         }, { headers });
       }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useBankingData } from "@/hooks/use-banking-data"
 import Dashboard from "./dashboard"
+import LoadingModal from "./loading-modal"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Error } from "@/components/ui/error"
 import { useRouter } from "next/navigation"
@@ -19,12 +20,31 @@ export default function DashboardContainer() {
     authCheckComplete,
     selectedBank,
     selectBank,
-    logout
+    logout,
+    accounts,
+    transactions,
+    username
   } = useBankingData()
 
   const router = useRouter()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [availableBanks, setAvailableBanks] = useState<Array<{ id: string, name: string }>>([])
+
+  // State to track if we should show the loading modal
+  const [showLoadingModal, setShowLoadingModal] = useState(true)
+
+  // State to track if initial data loading has happened
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false)
+
+  // Check if we already have data (for returning users)
+  const hasExistingData = accounts.length > 0 || transactions.length > 0
+
+  // If we have existing data, don't show loading modal initially
+  useEffect(() => {
+    if (hasExistingData) {
+      setShowLoadingModal(false)
+    }
+  }, [hasExistingData])
 
   // Handle logout
   const handleLogout = async () => {
@@ -74,6 +94,7 @@ export default function DashboardContainer() {
     }
   }, [isAuthenticated, router]);
 
+  // Check authentication status and redirect if not authenticated
   useEffect(() => {
     // Only consider authentication status after auth check is complete
     if (!isAuthenticated && authCheckComplete) {
@@ -82,30 +103,40 @@ export default function DashboardContainer() {
       return
     }
 
-    // Only refresh data if authenticated
-    if (isAuthenticated) {
-      refreshData().catch((err) => {
-        console.error("Error refreshing data:", err)
-        if (
-          err.message.includes("Not authenticated") ||
-          err.message.includes("No authentication token") ||
-          err.message.includes("Authentication token expired")
-        ) {
-          router.push("/login")
-        }
-      })
+    // Load data when authenticated and not already loaded
+    if (isAuthenticated && !initialDataLoaded) {
+      console.log("Loading initial data in dashboard container")
+      refreshData()
+        .then(() => {
+          setInitialDataLoaded(true)
+        })
+        .catch((err) => {
+          console.error("Error loading initial data:", err)
+          if (
+            err.message?.includes("Not authenticated") ||
+            err.message?.includes("No authentication token") ||
+            err.message?.includes("Authentication token expired")
+          ) {
+            router.push("/login")
+          }
+        })
     }
-  }, [isAuthenticated, authCheckComplete, router, refreshData]) // Include authCheckComplete to avoid premature redirects
+  }, [isAuthenticated, authCheckComplete, router, refreshData, initialDataLoaded])
 
   // Handle manual refresh
   const handleRefresh = async () => {
     if (isRefreshing) return;
 
     setIsRefreshing(true);
+    // Show the loading modal when manually refreshing
+    setShowLoadingModal(true);
+
     try {
       await forceRefresh();
     } catch (error) {
       console.error("Error refreshing data:", error);
+      // Hide modal on error
+      setShowLoadingModal(false);
     } finally {
       setIsRefreshing(false);
     }
@@ -113,6 +144,8 @@ export default function DashboardContainer() {
 
   // Handle bank selection
   const handleBankChange = (bankId: string) => {
+    // Show the loading modal when changing banks
+    setShowLoadingModal(true);
     selectBank(bankId);
   };
 
@@ -127,6 +160,11 @@ export default function DashboardContainer() {
       Logout
     </Button>
   );
+
+  // Handler for when loading is complete
+  const handleLoadingComplete = () => {
+    setShowLoadingModal(false);
+  };
 
   if (error) {
     return (
@@ -156,7 +194,8 @@ export default function DashboardContainer() {
     )
   }
 
-  if (isLoading) {
+  // Show minimal loading spinner when no data is available
+  if (isLoading && !hasExistingData) {
     return (
       <div className="flex flex-col min-h-screen bg-white dark:bg-[#0F0F12]">
         <div className="flex justify-end p-4">
@@ -165,7 +204,14 @@ export default function DashboardContainer() {
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
-            <p className="text-gray-600 dark:text-gray-400">Loading your banking data...</p>
+            <p className="text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              size="sm"
+            >
+              Return to Login
+            </Button>
           </div>
         </div>
       </div>
@@ -174,45 +220,14 @@ export default function DashboardContainer() {
 
   return (
     <div className="flex flex-col">
-      <div className="flex justify-between items-center mb-4 px-4 relative z-80">
-        {availableBanks.length > 1 && (
-          <div className="flex items-center lg:ml-64">
-            <span className="text-sm mr-2 text-gray-600 dark:text-gray-400">Bank:</span>
-            <Select value={selectedBank} onValueChange={handleBankChange}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select bank" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableBanks.map(bank => (
-                  <SelectItem key={bank.id} value={bank.id}>
-                    {bank.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+      {/* Loading Modal - shown during data loading or refresh */}
+      {showLoadingModal && (
+        <LoadingModal
+          isOpen={showLoadingModal}
+          onComplete={handleLoadingComplete}
+        />
+      )}
 
-        <Button
-          onClick={handleRefresh}
-          variant="outline"
-          size="sm"
-          disabled={isRefreshing}
-          className="ml-auto"
-        >
-          {isRefreshing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh Data
-            </>
-          )}
-        </Button>
-      </div>
 
       <Dashboard />
     </div>

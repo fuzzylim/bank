@@ -13,6 +13,7 @@ import {
   ConfigurationError,
 } from "@/lib/open-banking-api"
 import Cookies from "js-cookie"
+import { OBPApiError } from "@/lib/banking/errors"
 
 // Mock financial goals since they're not typically provided by banking APIs
 const MOCK_FINANCIAL_GOALS: FinancialGoal[] = [
@@ -103,6 +104,7 @@ export function useBankingData() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [selectedBank, setSelectedBank] = useState<string>(DEFAULT_BANK_ID)
   const [authCheckComplete, setAuthCheckComplete] = useState<boolean>(false)
+  const [username, setUsername] = useState<string>("")
 
   // Generate more realistic financial goals based on account data
   const generateFinancialGoals = useCallback((accounts: Account[]): FinancialGoal[] => {
@@ -156,11 +158,34 @@ export function useBankingData() {
     return goals;
   }, []);
 
+  // Helper function to emit login progress events
+  const emitLoginProgress = useCallback((type: string, stage: string, accountsTotal?: number, currentAccount?: number) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('loginProgress', {
+        detail: {
+          type,
+          stage,
+          accountsTotal,
+          currentAccount
+        }
+      }));
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
     try {
+      // Ensure user sees progress, even if data is from cache
+      const minProgressDelay = 300; // Minimum ms to show each progress step
+
+      // Emit bank loading start event
+      emitLoginProgress('banks', 'start');
+
+      // Track start time for minimum display
+      const banksStartTime = Date.now();
+
       // Get banks with caching
       const banksData: any = await getCachedOrFetch('banks', async () => {
         console.log("Fetching banks from API...");
@@ -168,6 +193,15 @@ export function useBankingData() {
         console.log("Raw API response:", JSON.stringify(result).substring(0, 100) + "...");
         return result;
       });
+
+      // Ensure minimum display time for progress
+      const banksElapsed = Date.now() - banksStartTime;
+      if (banksElapsed < minProgressDelay) {
+        await new Promise(resolve => setTimeout(resolve, minProgressDelay - banksElapsed));
+      }
+
+      // Emit bank loading complete event
+      emitLoginProgress('banks', 'complete');
 
       console.log("Full banksData structure:", JSON.stringify(banksData).substring(0, 300) + "...");
 
@@ -214,9 +248,56 @@ export function useBankingData() {
       const bankId = selectedBank || banks[0]?.id || DEFAULT_BANK_ID;
       setSelectedBank(bankId);
 
-      // Get accounts with caching
+      // Emit accounts loading start event
+      emitLoginProgress('accounts', 'start');
+
+      // Track start time for minimum display
+      const accountsStartTime = Date.now();
+
+      // Get accounts with caching and retry for auth failures
+      // Initial progress indication - we don't know the account count yet
+      // Use a minimum of 5 steps for better UX until we know the real count
+      const INITIAL_STEPS = 5;
+      emitLoginProgress('accounts', 'start', INITIAL_STEPS, 0);
+
+      // First progress update
+      await new Promise(resolve => setTimeout(resolve, minProgressDelay / 2));
+      emitLoginProgress('accounts', 'progress', INITIAL_STEPS, 1);
+
       const accountsData: Array<any> | { accounts: Array<any> } = await getCachedOrFetch(`accounts-${bankId}`, async () => {
-        return await obpApi.getAccounts(bankId);
+        try {
+          return await obpApi.getAccounts(bankId);
+        } catch (error: unknown) {
+          // If we get an authentication error, try once more after forcing a token check
+          if (error instanceof OBPApiError && error.message === "Not authenticated") {
+            console.log("Authentication error getting accounts, attempting recovery...");
+
+            // Clear any stale token state
+            Cookies.remove("obp_token");
+            Cookies.remove("obp_token", { path: '/' });
+
+            // Force a fresh authentication check
+            const refreshResponse = await fetch(`/api/test-connection?client=true&refresh=true&_=${Date.now()}`, {
+              credentials: 'include',
+              headers: {
+                'Cache-Control': 'no-cache, no-store',
+                'Pragma': 'no-cache'
+              },
+              cache: 'no-store'
+            });
+
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json();
+              if (refreshData.authenticated) {
+                console.log("Authentication recovered, retrying accounts fetch");
+                return await obpApi.getAccounts(bankId);
+              }
+            }
+          }
+
+          // Re-throw the error if recovery failed or it's not an auth error
+          throw error;
+        }
       });
 
       // Handle both array format and {accounts: [...]} format
@@ -228,6 +309,22 @@ export function useBankingData() {
         format: Array.isArray(accountsData) ? "array" : "object",
         count: obpAccounts.length
       });
+
+      // Ensure minimum display time for progress
+      const accountsElapsed = Date.now() - accountsStartTime;
+      if (accountsElapsed < minProgressDelay) {
+        await new Promise(resolve => setTimeout(resolve, minProgressDelay - accountsElapsed));
+      }
+
+      // Second progress update
+      await new Promise(resolve => setTimeout(resolve, minProgressDelay / 2));
+      emitLoginProgress('accounts', 'progress', INITIAL_STEPS, 2);
+
+      // Store the actual account count for reuse
+      const actualAccountCount = obpAccounts.length;
+
+      // Emit accounts loading complete event with the real account count
+      emitLoginProgress('accounts', 'complete', actualAccountCount, actualAccountCount);
 
       // Add additional check to ensure obpAccounts is valid
       if (!obpAccounts || !Array.isArray(obpAccounts) || obpAccounts.length === 0) {
@@ -263,7 +360,27 @@ export function useBankingData() {
 
       let allTransactions: Transaction[] = []
 
+      // Emit transactions loading start event with total accounts count
+      const transactionsStartTime = Date.now();
+
+      // Use actual account count from above for transaction progress
+      const accountCount = Math.max(actualAccountCount, 1); // Ensure at least 1 for UI feedback
+
+      // Update loading-screen with the real account count for transactions
+      emitLoginProgress('transactions', 'start', accountCount, 0);
+
       // Fetch transactions for each account
+      let processedCount = 0;
+
+      // If there are no accounts, simulate some progress
+      if (obpAccounts.length === 0) {
+        for (let i = 0; i <= 100; i += 20) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          emitLoginProgress('transactions', 'progress', 1, 0.2);
+        }
+        emitLoginProgress('transactions', 'complete', 1, 1);
+        return;
+      }
       for (const account of obpAccounts) {
         // Check if views_available exists and is an array before using find()
         const viewId = Array.isArray(account.views_available)
@@ -285,26 +402,56 @@ export function useBankingData() {
 
           const transformedTransactions = transformTransactions(normalizedTransactions)
           allTransactions = [...allTransactions, ...transformedTransactions]
+
+          // Update progress after each account is processed
+          processedCount++;
+          emitLoginProgress('transactions', 'progress', obpAccounts.length, processedCount);
         } catch (err) {
           console.error(`Error fetching transactions for account ${account.id}:`, err)
+          // Still increment processed count even if there was an error
+          processedCount++;
+          emitLoginProgress('transactions', 'progress', obpAccounts.length, processedCount);
         }
       }
+
+      // Ensure a minimum transactions loading display time
+      const transactionsElapsed = Date.now() - transactionsStartTime;
+      const minTransactionsDelay = minProgressDelay * 2; // Give transactions twice the minimum delay
+      if (transactionsElapsed < minTransactionsDelay) {
+        await new Promise(resolve => setTimeout(resolve, minTransactionsDelay - transactionsElapsed));
+      }
+
+      // Emit transactions loading complete event
+      emitLoginProgress('transactions', 'complete', obpAccounts.length, obpAccounts.length);
 
       // Sort transactions by date (ISO string format)
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       setTransactions(allTransactions)
       setIsAuthenticated(true)
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error fetching data:", err)
       if (err instanceof APIError) {
         if (err.status === 401) {
           Cookies.remove("obp_token")
+          Cookies.remove("obp_token", { path: '/' })
           setIsAuthenticated(false)
           router.push("/login")
           return
         }
         setError(err.message)
       } else if (err instanceof ConfigurationError) {
+        setError(err.message)
+      } else if (err instanceof OBPApiError) {
+        console.error("Failed to fetch banks:", err.message);
+        if (err.status === 401) {
+          Cookies.remove("obp_token")
+          Cookies.remove("obp_token", { path: '/' })
+          setIsAuthenticated(false)
+          router.push("/login")
+          return
+        }
+        setError(err.message);
+      } else if (err instanceof Error) {
         setError(err.message)
       } else {
         setError("Failed to fetch banking data. Please try again later.")
@@ -363,16 +510,22 @@ export function useBankingData() {
             if (testData.success && testData.authenticated) {
               console.log("Client-side token verified as authenticated");
               setIsAuthenticated(true);
-
               // Remove any logged out flag
               if (typeof window !== "undefined" && window.localStorage) {
                 window.localStorage.removeItem('logged_out');
+
+                // Try to retrieve username from localStorage
+                const savedUsername = window.localStorage.getItem('obp_username');
+                if (savedUsername) {
+                  setUsername(savedUsername);
+                }
               }
 
               // Fetch data immediately
               fetchData();
               setAuthCheckComplete(true);
 
+              // Redirect to dashboard if we're on the login page
               // Redirect to dashboard if we're on the login page
               if (isLoginPage) {
                 router.push("/dashboard");
@@ -413,6 +566,12 @@ export function useBankingData() {
               // Remove any logged out flag
               if (typeof window !== "undefined" && window.localStorage) {
                 window.localStorage.removeItem('logged_out');
+
+                // Try to retrieve username from localStorage
+                const savedUsername = window.localStorage.getItem('obp_username');
+                if (savedUsername) {
+                  setUsername(savedUsername);
+                }
               }
 
               // Fetch data immediately
@@ -449,6 +608,12 @@ export function useBankingData() {
                     // Remove any logged out flag
                     if (typeof window !== "undefined" && window.localStorage) {
                       window.localStorage.removeItem('logged_out');
+
+                      // Try to retrieve username from localStorage
+                      const savedUsername = window.localStorage.getItem('obp_username');
+                      if (savedUsername) {
+                        setUsername(savedUsername);
+                      }
                     }
 
                     fetchData();
@@ -500,8 +665,7 @@ export function useBankingData() {
 
   // Remove the second effect that was causing the infinite loop
   // The data fetching is now handled in the first effect and in the login function
-
-  const login = async (username: string, password: string): Promise<void> => {
+  const login = async (username: string, password: string, preventRedirect = false): Promise<void> => {
     setIsLoading(true)
     setError(null)
 
@@ -516,6 +680,15 @@ export function useBankingData() {
 
       // Get token from API - this will also set it in the client and save to cookie
       const token = await obpApi.login(username, password)
+      console.log("Login successful, token received");
+
+      // Store the username in state
+      setUsername(username)
+
+      // Also store in localStorage for persistence across page reloads
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('obp_username', username);
+      }
       console.log("Login successful, token received");
 
       // Verify we have the token in a cookie for future page loads
@@ -543,24 +716,8 @@ export function useBankingData() {
         window.localStorage.removeItem('logged_out');
       }
 
-      // Fetch data first, but don't navigate here - let the component handle navigation
-      try {
-        await fetchData()
-        console.log("Data fetched successfully after login");
-      } catch (fetchErr) {
-        console.error("Error fetching data after login:", fetchErr)
-        // If fetching fails, still consider the user authenticated
-        // but show the error
-        if (fetchErr instanceof APIError) {
-          setError(fetchErr.message)
-        } else if (fetchErr instanceof ConfigurationError) {
-          setError(fetchErr.message)
-        } else if (fetchErr instanceof Error) {
-          setError(fetchErr.message)
-        } else {
-          setError("Failed to fetch banking data after login")
-        }
-      }
+      // No longer fetch data here - this will be done separately in the loading page
+      console.log("Authentication completed successfully - data will be loaded separately");
 
       // Return successfully - navigation will be handled by the component
       return;
@@ -589,9 +746,15 @@ export function useBankingData() {
       setTransactions([])
       setTotalBalance("$0.00")
       setIsAuthenticated(false)
+      setUsername("") // Clear username on logout
 
       // Explicitly reset token in DirectLoginClient immediately
       obpApi.setToken("");
+
+      // Clear username from localStorage
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('obp_username');
+      }
 
       // Clear all cache entries
       Object.keys(cache).forEach(key => {
@@ -675,8 +838,22 @@ export function useBankingData() {
       delete cache[key];
     });
 
-    // Fetch fresh data
-    return fetchData();
+    // Emit a start event for refresh operation
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('loginRefresh', {
+        detail: { refreshing: true }
+      }));
+    }
+
+    // Fetch fresh data with progress tracking
+    return fetchData().finally(() => {
+      // Emit completion event when done
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('loginRefresh', {
+          detail: { refreshing: false }
+        }));
+      }
+    });
   }, [fetchData]);
 
   return {
@@ -689,6 +866,7 @@ export function useBankingData() {
     totalBalance,
     isAuthenticated,
     authCheckComplete,
+    username,
     login,
     logout,
     refreshData: fetchData,
