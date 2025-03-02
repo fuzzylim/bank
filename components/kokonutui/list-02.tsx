@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   ArrowUpRight,
@@ -14,9 +16,26 @@ import {
 } from "lucide-react"
 import { useBankingData } from "@/hooks/use-banking-data"
 import { Skeleton } from "@/components/ui/skeleton"
+import TransactionDetailsModal from "./transaction-details-modal"
 
 export default function List02({ className }: { className?: string }) {
-  const { transactions, isLoading } = useBankingData()
+  const { transactions, isLoading, selectedBank } = useBankingData()
+  const router = useRouter()
+
+  // State for transaction details modal
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null)
+
+  // Handle transaction selection
+  const handleTransactionClick = (transactionId: string) => {
+    setSelectedTransactionId(transactionId)
+    setIsDetailsModalOpen(true)
+  }
+
+  // Handle view all transactions
+  const handleViewAllTransactions = () => {
+    router.push('/dashboard/transactions')
+  }
 
   // Loading state
   if (isLoading) {
@@ -96,7 +115,9 @@ export default function List02({ className }: { className?: string }) {
                   "p-2 rounded-lg",
                   "hover:bg-zinc-100 dark:hover:bg-zinc-800/50",
                   "transition-all duration-200",
+                  "cursor-pointer"
                 )}
+                onClick={() => handleTransactionClick(transaction.id)}
               >
                 <div
                   className={cn(
@@ -141,6 +162,7 @@ export default function List02({ className }: { className?: string }) {
       <div className="p-2 border-t border-zinc-100 dark:border-zinc-800">
         <button
           type="button"
+          onClick={handleViewAllTransactions}
           className={cn(
             "w-full flex items-center justify-center gap-2",
             "py-2 px-3 rounded-lg",
@@ -163,6 +185,14 @@ export default function List02({ className }: { className?: string }) {
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Transaction details modal */}
+      <TransactionDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        transactionId={selectedTransactionId}
+        bankId={selectedBank}
+      />
     </div>
   )
 }

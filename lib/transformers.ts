@@ -175,3 +175,20 @@ export const transformTransactions = (obpTransactions: OBPTransaction[]): Transa
         const transactionType = transaction.details?.type || "";
         if (transactionType && !title.includes(transactionType)) {
             title = `${title} (${transactionType})`;
+        }
+
+        return {
+            id: transaction.id || `unknown-${Math.random().toString(36).substring(7)}`,
+            title: title,
+            amount: Math.abs(amount).toFixed(2),
+            type: type,
+            category: category,
+            icon: category,
+            timestamp: timestamp,
+            status: "completed",
+            description: transaction.details?.description || transaction.metadata?.narrative || "",
+            otherParty: transaction.other_account?.holder?.name || "",
+            date: date.toISOString()
+        };
+    });
+};
