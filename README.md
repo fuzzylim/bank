@@ -11,6 +11,15 @@ A modern, secure dashboard for interacting with Open Banking APIs. This dashboar
 - Responsive design for desktop and mobile
 - Dark and light mode support
 
+## Documentation
+
+For comprehensive information about the Open Banking Dashboard, please refer to the following documentation:
+
+- [Developer Guide](DEVELOPER.md) - Technical documentation for developers
+- [User Guide](USER_GUIDE.md) - End-user documentation
+- [Operations Guide](OPERATIONS.md) - DevOps and deployment documentation
+- [API Reference](API_REFERENCE.md) - API endpoints documentation
+
 ## Tech Stack
 
 - **Frontend**: Next.js, React, Tailwind CSS
@@ -61,6 +70,23 @@ A modern, secure dashboard for interacting with Open Banking APIs. This dashboar
    ```
 
 5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Architecture Overview
+
+The Open Banking Dashboard uses a modern architecture based on Next.js:
+
+```mermaid
+graph TD
+    User[User/Browser] -->|HTTPS| NextJS[Next.js Frontend]
+    NextJS -->|API Routes| ServerAPI[Server-side API Handlers]
+    ServerAPI -->|DirectLogin| OBP[OpenBankProject API]
+    NextJS -->|React Components| UI[User Interface]
+    UI -->|State Updates| Hooks[React Hooks]
+    Hooks -->|Data Fetching| ClientAPI[Client API Utils]
+    ClientAPI -->|API Calls| ServerAPI
+```
+
+For more detailed architecture information, please refer to the [Developer Guide](DEVELOPER.md).
 
 ## Contributing
 
