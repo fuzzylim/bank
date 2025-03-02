@@ -74,9 +74,12 @@ export async function GET(
   request: Request,
   { params }: { params: { bankId: string } }
 ) {
+  // Await params to ensure they're fully resolved
+  const { bankId } = await params;
+
   try {
     // Get auth token from cookies using Next.js cookie API
-    const token = getCookie("obp_token");
+    const token = await getCookie("obp_token");
     let verifiedToken: string | null = token || null;
 
     // If we have a token, verify it by making a test request
@@ -115,7 +118,7 @@ export async function GET(
     }
 
     // Use our handler to process the request
-    const result = await accountsHandler(request, params.bankId, verifiedToken);
+    const result = await accountsHandler(request, bankId, verifiedToken);
 
     // Return the result as a NextResponse
     return NextResponse.json(result);

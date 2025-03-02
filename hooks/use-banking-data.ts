@@ -157,11 +157,34 @@ export function useBankingData() {
     return goals;
   }, []);
 
+  // Helper function to emit login progress events
+  const emitLoginProgress = useCallback((type: string, stage: string, accountsTotal?: number, currentAccount?: number) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('loginProgress', {
+        detail: {
+          type,
+          stage,
+          accountsTotal,
+          currentAccount
+        }
+      }));
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
     try {
+      // Ensure user sees progress, even if data is from cache
+      const minProgressDelay = 300; // Minimum ms to show each progress step
+
+      // Emit bank loading start event
+      emitLoginProgress('banks', 'start');
+
+      // Track start time for minimum display
+      const banksStartTime = Date.now();
+
       // Get banks with caching
       const banksData: any = await getCachedOrFetch('banks', async () => {
         console.log("Fetching banks from API...");
@@ -169,6 +192,15 @@ export function useBankingData() {
         console.log("Raw API response:", JSON.stringify(result).substring(0, 100) + "...");
         return result;
       });
+
+      // Ensure minimum display time for progress
+      const banksElapsed = Date.now() - banksStartTime;
+      if (banksElapsed < minProgressDelay) {
+        await new Promise(resolve => setTimeout(resolve, minProgressDelay - banksElapsed));
+      }
+
+      // Emit bank loading complete event
+      emitLoginProgress('banks', 'complete');
 
       console.log("Full banksData structure:", JSON.stringify(banksData).substring(0, 300) + "...");
 
@@ -215,7 +247,22 @@ export function useBankingData() {
       const bankId = selectedBank || banks[0]?.id || DEFAULT_BANK_ID;
       setSelectedBank(bankId);
 
+      // Emit accounts loading start event
+      emitLoginProgress('accounts', 'start');
+
+      // Track start time for minimum display
+      const accountsStartTime = Date.now();
+
       // Get accounts with caching and retry for auth failures
+      // Initial progress indication - we don't know the account count yet
+      // Use a minimum of 5 steps for better UX until we know the real count
+      const INITIAL_STEPS = 5;
+      emitLoginProgress('accounts', 'start', INITIAL_STEPS, 0);
+
+      // First progress update
+      await new Promise(resolve => setTimeout(resolve, minProgressDelay / 2));
+      emitLoginProgress('accounts', 'progress', INITIAL_STEPS, 1);
+
       const accountsData: Array<any> | { accounts: Array<any> } = await getCachedOrFetch(`accounts-${bankId}`, async () => {
         try {
           return await obpApi.getAccounts(bankId);
@@ -262,6 +309,22 @@ export function useBankingData() {
         count: obpAccounts.length
       });
 
+      // Ensure minimum display time for progress
+      const accountsElapsed = Date.now() - accountsStartTime;
+      if (accountsElapsed < minProgressDelay) {
+        await new Promise(resolve => setTimeout(resolve, minProgressDelay - accountsElapsed));
+      }
+
+      // Second progress update
+      await new Promise(resolve => setTimeout(resolve, minProgressDelay / 2));
+      emitLoginProgress('accounts', 'progress', INITIAL_STEPS, 2);
+
+      // Store the actual account count for reuse
+      const actualAccountCount = obpAccounts.length;
+
+      // Emit accounts loading complete event with the real account count
+      emitLoginProgress('accounts', 'complete', actualAccountCount, actualAccountCount);
+
       // Add additional check to ensure obpAccounts is valid
       if (!obpAccounts || !Array.isArray(obpAccounts) || obpAccounts.length === 0) {
         console.error("Invalid accounts data received:", obpAccounts);
@@ -296,7 +359,27 @@ export function useBankingData() {
 
       let allTransactions: Transaction[] = []
 
+      // Emit transactions loading start event with total accounts count
+      const transactionsStartTime = Date.now();
+
+      // Use actual account count from above for transaction progress
+      const accountCount = Math.max(actualAccountCount, 1); // Ensure at least 1 for UI feedback
+
+      // Update loading-screen with the real account count for transactions
+      emitLoginProgress('transactions', 'start', accountCount, 0);
+
       // Fetch transactions for each account
+      let processedCount = 0;
+
+      // If there are no accounts, simulate some progress
+      if (obpAccounts.length === 0) {
+        for (let i = 0; i <= 100; i += 20) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          emitLoginProgress('transactions', 'progress', 1, 0.2);
+        }
+        emitLoginProgress('transactions', 'complete', 1, 1);
+        return;
+      }
       for (const account of obpAccounts) {
         // Check if views_available exists and is an array before using find()
         const viewId = Array.isArray(account.views_available)
@@ -318,10 +401,27 @@ export function useBankingData() {
 
           const transformedTransactions = transformTransactions(normalizedTransactions)
           allTransactions = [...allTransactions, ...transformedTransactions]
+
+          // Update progress after each account is processed
+          processedCount++;
+          emitLoginProgress('transactions', 'progress', obpAccounts.length, processedCount);
         } catch (err) {
           console.error(`Error fetching transactions for account ${account.id}:`, err)
+          // Still increment processed count even if there was an error
+          processedCount++;
+          emitLoginProgress('transactions', 'progress', obpAccounts.length, processedCount);
         }
       }
+
+      // Ensure a minimum transactions loading display time
+      const transactionsElapsed = Date.now() - transactionsStartTime;
+      const minTransactionsDelay = minProgressDelay * 2; // Give transactions twice the minimum delay
+      if (transactionsElapsed < minTransactionsDelay) {
+        await new Promise(resolve => setTimeout(resolve, minTransactionsDelay - transactionsElapsed));
+      }
+
+      // Emit transactions loading complete event
+      emitLoginProgress('transactions', 'complete', obpAccounts.length, obpAccounts.length);
 
       // Sort transactions by date (ISO string format)
       allTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -547,7 +647,7 @@ export function useBankingData() {
   // Remove the second effect that was causing the infinite loop
   // The data fetching is now handled in the first effect and in the login function
 
-  const login = async (username: string, password: string): Promise<void> => {
+  const login = async (username: string, password: string, preventRedirect = false): Promise<void> => {
     setIsLoading(true)
     setError(null)
 
@@ -589,24 +689,8 @@ export function useBankingData() {
         window.localStorage.removeItem('logged_out');
       }
 
-      // Fetch data first, but don't navigate here - let the component handle navigation
-      try {
-        await fetchData()
-        console.log("Data fetched successfully after login");
-      } catch (fetchErr) {
-        console.error("Error fetching data after login:", fetchErr)
-        // If fetching fails, still consider the user authenticated
-        // but show the error
-        if (fetchErr instanceof APIError) {
-          setError(fetchErr.message)
-        } else if (fetchErr instanceof ConfigurationError) {
-          setError(fetchErr.message)
-        } else if (fetchErr instanceof Error) {
-          setError(fetchErr.message)
-        } else {
-          setError("Failed to fetch banking data after login")
-        }
-      }
+      // No longer fetch data here - this will be done separately in the loading page
+      console.log("Authentication completed successfully - data will be loaded separately");
 
       // Return successfully - navigation will be handled by the component
       return;
@@ -721,8 +805,22 @@ export function useBankingData() {
       delete cache[key];
     });
 
-    // Fetch fresh data
-    return fetchData();
+    // Emit a start event for refresh operation
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('loginRefresh', {
+        detail: { refreshing: true }
+      }));
+    }
+
+    // Fetch fresh data with progress tracking
+    return fetchData().finally(() => {
+      // Emit completion event when done
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('loginRefresh', {
+          detail: { refreshing: false }
+        }));
+      }
+    });
   }, [fetchData]);
 
   return {

@@ -35,6 +35,7 @@ export default function LoginForm() {
     id: string;
     label: string;
     status: 'idle' | 'loading' | 'complete' | 'error';
+    progress?: number; // Optional progress percentage (0-100)
   }
 
   const [dataLoadingSteps, setDataLoadingSteps] = useState<DataLoadingStep[]>([
@@ -51,18 +52,32 @@ export default function LoginForm() {
     {
       id: 'transactions',
       label: 'Loading transactions...',
-      status: 'idle'
+      status: 'idle',
+      progress: 0
     }
   ]);
 
   // Update data loading sub-step status
-  const updateDataLoadingStep = (stepId: string, status: 'idle' | 'loading' | 'complete' | 'error') => {
+  const updateDataLoadingStep = (stepId: string, status: 'idle' | 'loading' | 'complete' | 'error', progress?: number) => {
     setDataLoadingSteps(prevSteps =>
       prevSteps.map(step =>
-        step.id === stepId ? { ...step, status } : step
+        step.id === stepId
+          ? {
+            ...step,
+            status,
+            // Keep existing progress if not provided and not complete/error
+            progress: status === 'complete' ? 100 :
+              status === 'error' ? undefined :
+                progress !== undefined ? progress : step.progress
+          }
+          : step
       )
     );
   };
+
+  // Add transaction progress tracking
+  const [accountsToProcess, setAccountsToProcess] = useState(0);
+  const [accountsProcessed, setAccountsProcessed] = useState(0);
 
   const [loginSteps, setLoginSteps] = useState<LoginStep[]>([
     {
@@ -96,7 +111,7 @@ export default function LoginForm() {
     {
       id: 'complete',
       label: 'Completing login',
-      description: 'Finalizing and redirecting to dashboard',
+      description: 'Finalizing and preparing to load data',
       icon: <LogIn className="h-4 w-4" />,
       status: 'idle'
     }
@@ -121,8 +136,22 @@ export default function LoginForm() {
 
     // Only redirect if authenticated AND not just logged out
     if (isAuthenticated && !loggedOut) {
-      console.log("Already authenticated, redirecting to dashboard");
-      router.push("/dashboard");
+      console.log("Already authenticated, redirecting to loading screen");
+
+      // Show progress before redirecting
+      setIsLoading(true);
+      updateStepStatus('prepare', 'complete');
+      updateStepStatus('authenticate', 'complete');
+      updateStepStatus('token', 'complete');
+      updateStepStatus('complete', 'loading');
+
+      // Use a small delay before redirecting to show the progress
+      setTimeout(() => {
+        updateStepStatus('complete', 'complete');
+        setTimeout(() => {
+          router.push("/loading-bank-data");
+        }, 300);
+      }, 500);
     }
   }, [isAuthenticated, router]);
 
@@ -155,76 +184,25 @@ export default function LoginForm() {
       // Step 3: Token
       updateStepStatus('token', 'idle')
 
-      // Step 4: Data loading
-      updateStepStatus('data', 'idle')
-
-      // Step 5: Complete
-      updateStepStatus('complete', 'idle')
-
-      // Use a ref to track if we already redirected
-      let redirected = false;
-
-      // Function to monitor data loading progress
-      const checkDataProgress = () => {
-        if (isAuthenticated) {
-          // Token received
-          updateStepStatus('authenticate', 'complete')
-          updateStepStatus('token', 'complete')
-
-          // Now in data loading phase
-          updateStepStatus('data', 'loading')
-        }
-      };
-
-      // Set up a watcher for authentication status
-      const progressInterval = setInterval(checkDataProgress, 300);
-
       try {
-        // Login and let the useEffect handle the redirect
-        await login(username, password)
+        // Login with preventRedirect=true so we can handle the redirect ourselves
+        await login(username, password, true)
         console.log("Login successful, credential verification complete")
 
-        // Auth and token steps are now complete
+        // Auth and token steps are complete
         updateStepStatus('authenticate', 'complete')
         updateStepStatus('token', 'complete')
-        // Now loading data
-        updateStepStatus('data', 'loading')
 
-        // Reset data loading steps
-        setDataLoadingSteps(steps => steps.map(step => ({ ...step, status: 'idle' })))
-
-        // Show banks loading
-        updateDataLoadingStep('banks', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 500))
-        updateDataLoadingStep('banks', 'complete')
-
-        // Show accounts loading
-        updateDataLoadingStep('accounts', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 500))
-        updateDataLoadingStep('accounts', 'complete')
-
-        // Show transactions loading
-        updateDataLoadingStep('transactions', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 800))
-        updateDataLoadingStep('transactions', 'complete')
-
-        // Data loading complete
-        updateStepStatus('data', 'complete')
-        updateStepStatus('data', 'complete')
-
-        // Completing login
+        // Complete step
         updateStepStatus('complete', 'loading')
         await new Promise(resolve => setTimeout(resolve, 300))
         updateStepStatus('complete', 'complete')
 
-        clearInterval(progressInterval)
-
-        // Add explicit redirect after all steps are complete
-        console.log("All steps complete, forcing redirect to dashboard")
-        redirected = true
-        router.push("/dashboard")
+        // Redirect to loading page instead of dashboard
+        console.log("Authentication complete, redirecting to loading page")
+        await new Promise(resolve => setTimeout(resolve, 500)) // Brief delay for UI feedback
+        router.push("/loading-bank-data")
       } catch (loginErr) {
-        clearInterval(progressInterval)
         throw loginErr
       }
 
@@ -265,76 +243,25 @@ export default function LoginForm() {
       // Step 3: Token
       updateStepStatus('token', 'idle')
 
-      // Step 4: Data loading
-      updateStepStatus('data', 'idle')
-
-      // Step 5: Complete
-      updateStepStatus('complete', 'idle')
-
-      // Use a ref to track if we already redirected
-      let redirected = false;
-
-      // Function to monitor data loading progress
-      const checkDataProgress = () => {
-        if (isAuthenticated) {
-          // Token received
-          updateStepStatus('authenticate', 'complete')
-          updateStepStatus('token', 'complete')
-
-          // Now in data loading phase
-          updateStepStatus('data', 'loading')
-        }
-      };
-
-      // Set up a watcher for authentication status
-      const progressInterval = setInterval(checkDataProgress, 300);
-
-      // Login with the demo credentials
       try {
-        await login(demoUsername, demoPassword)
+        // Login with the demo credentials with preventRedirect=true
+        await login(demoUsername, demoPassword, true)
         console.log("Quick login successful, credential verification complete")
 
         // Auth and token steps are now complete
         updateStepStatus('authenticate', 'complete')
         updateStepStatus('token', 'complete')
 
-        // Now loading data
-        updateStepStatus('data', 'loading')
-
-        // Reset data loading steps
-        setDataLoadingSteps(steps => steps.map(step => ({ ...step, status: 'idle' })))
-
-        // Show banks loading
-        updateDataLoadingStep('banks', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 500))
-        updateDataLoadingStep('banks', 'complete')
-
-        // Show accounts loading
-        updateDataLoadingStep('accounts', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 500))
-        updateDataLoadingStep('accounts', 'complete')
-
-        // Show transactions loading
-        updateDataLoadingStep('transactions', 'loading')
-        await new Promise(resolve => setTimeout(resolve, 800))
-        updateDataLoadingStep('transactions', 'complete')
-
-        // Data loading complete
-        updateStepStatus('data', 'complete')
-
-        // Completing login
+        // Complete step
         updateStepStatus('complete', 'loading')
         await new Promise(resolve => setTimeout(resolve, 300))
         updateStepStatus('complete', 'complete')
 
-        clearInterval(progressInterval)
-
-        // Add explicit redirect after all steps are complete
-        console.log("All steps complete, forcing redirect to dashboard")
-        redirected = true
-        router.push("/dashboard")
+        // Redirect to loading page instead of dashboard
+        console.log("Authentication complete, redirecting to loading page")
+        await new Promise(resolve => setTimeout(resolve, 500)) // Brief delay for UI feedback
+        router.push("/loading-bank-data")
       } catch (loginErr) {
-        clearInterval(progressInterval)
         throw loginErr
       }
 
@@ -407,23 +334,50 @@ export default function LoginForm() {
                       {step.id === 'data' && step.status === 'loading' && (
                         <div className="mt-2 ml-2 space-y-2">
                           {dataLoadingSteps.map(subStep => (
-                            <div key={subStep.id} className="flex items-center">
-                              <div className="mr-2 flex-shrink-0">
-                                {subStep.status === 'loading' && (
-                                  <div className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                                )}
-                                {subStep.status === 'complete' && (
-                                  <div className="h-3 w-3 rounded-full bg-green-500 flex items-center justify-center">
-                                    <Check className="h-2 w-2 text-white" />
-                                  </div>
-                                )}
-                                {subStep.status === 'idle' && (
-                                  <div className="h-3 w-3 rounded-full border border-gray-300" />
-                                )}
+                            <div key={subStep.id} className="flex flex-col">
+                              <div className="flex items-center">
+                                <div className="mr-2 flex-shrink-0">
+                                  {subStep.status === 'loading' && (
+                                    <div className="h-3 w-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                                  )}
+                                  {subStep.status === 'complete' && (
+                                    <div className="h-3 w-3 rounded-full bg-green-500 flex items-center justify-center">
+                                      <Check className="h-2 w-2 text-white" />
+                                    </div>
+                                  )}
+                                  {subStep.status === 'idle' && (
+                                    <div className="h-3 w-3 rounded-full border border-gray-300" />
+                                  )}
+                                </div>
+                                <div className="flex-1 flex justify-between items-center">
+                                  <p className={`text-xs ${subStep.status === 'complete' ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                    {subStep.label}
+                                  </p>
+                                  {/* Show account count for transactions step with progress */}
+                                  {subStep.id === 'transactions' && subStep.status === 'loading' && accountsToProcess > 0 && (
+                                    <p className="text-xs text-muted-foreground ml-2">
+                                      {accountsProcessed}/{accountsToProcess}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <p className={`text-xs ${subStep.status === 'complete' ? 'text-green-600' : 'text-muted-foreground'}`}>
-                                {subStep.label}
-                              </p>
+
+                              {/* Progress bar for steps with progress tracking */}
+                              {subStep.progress !== undefined && subStep.status === 'loading' && (
+                                <>
+                                  <div className="mt-1 mb-1 w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                    <div
+                                      className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                                      style={{ width: `${subStep.progress}%` }}
+                                    />
+                                  </div>
+                                  {subStep.id === 'transactions' && accountsProcessed > 0 && (
+                                    <p className="text-[10px] text-muted-foreground text-right">
+                                      Processing account {accountsProcessed} of {accountsToProcess}
+                                    </p>
+                                  )}
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -454,9 +408,39 @@ export default function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col items-center space-y-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Logging in..." : "Login"}
-          </Button>
+          {!isLoading || (
+            isLoading &&
+            loginSteps.every(step => step.status === 'complete') &&
+            typeof window !== "undefined" &&
+            window.localStorage?.getItem('stay_on_login_page')
+          ) ? (
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                if (isLoading && loginSteps.every(step => step.status === 'complete')) {
+                  // Clear the flag and redirect manually
+                  if (typeof window !== "undefined" && window.localStorage) {
+                    window.localStorage.removeItem('stay_on_login_page');
+                  }
+                  router.push("/dashboard");
+                } else {
+                  // Regular submit if we're not already logged in
+                  // Use e.preventDefault to simulate form submission without event
+                  const e = { preventDefault: () => { } } as React.FormEvent;
+                  handleSubmit(e);
+                }
+              }}
+            >
+              {isLoading && loginSteps.every(step => step.status === 'complete')
+                ? "Continue to Dashboard"
+                : "Login"}
+            </Button>
+          ) : (
+            <Button type="submit" className="w-full" disabled={true}>
+              Logging in...
+            </Button>
+          )}
 
           <div className="w-full space-y-2">
             <div className="text-sm font-medium text-center mb-2">Quick Demo Login</div>

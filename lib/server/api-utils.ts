@@ -9,18 +9,18 @@ export interface ApiResponse<T = any> {
     error?: string;
 }
 
-export const getCookie = (name: string): string | undefined => {
-    const cookieStore = cookies();
+export const getCookie = async (name: string): Promise<string | undefined> => {
+    const cookieStore = await cookies();
     return cookieStore.get(name)?.value;
 };
 
-export const setCookie = (name: string, value: string, options?: any): void => {
-    const cookieStore = cookies();
+export const setCookie = async (name: string, value: string, options?: any): Promise<void> => {
+    const cookieStore = await cookies();
     cookieStore.set(name, value, options);
 };
 
-export const clearCookie = (name: string): void => {
-    const cookieStore = cookies();
+export const clearCookie = async (name: string): Promise<void> => {
+    const cookieStore = await cookies();
     cookieStore.delete(name);
 };
 
