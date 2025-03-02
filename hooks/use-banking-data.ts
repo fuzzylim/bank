@@ -856,6 +856,141 @@ export function useBankingData() {
     });
   }, [fetchData]);
 
+  // Function to send money between accounts
+  const sendMoney = useCallback(async (fromAccountId: string, toAccountId: string, amount: string, description?: string) => {
+    try {
+      setIsLoading(true);
+
+      const response = await fetch(`/api/accounts/${selectedBank}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromAccountId,
+          toAccountId,
+          amount,
+          description: description || 'Money transfer'
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send money');
+      }
+
+      const result = await response.json();
+
+      // Add the new transaction to the transactions array
+      if (result.transaction) {
+        setTransactions(prevTransactions => [result.transaction, ...prevTransactions]);
+
+        // Update account balances based on the transaction
+        const fromAccount = accounts.find(acc => acc.id === fromAccountId);
+        const toAccount = accounts.find(acc => acc.id === toAccountId);
+
+        if (fromAccount && toAccount) {
+          const transactionAmount = parseFloat(amount);
+
+          // Update accounts with new balances
+          setAccounts(prevAccounts => prevAccounts.map(account => {
+            if (account.id === fromAccountId) {
+              const newBalance = (parseFloat(account.balance) - transactionAmount).toFixed(2);
+              return { ...account, balance: newBalance };
+            }
+            if (account.id === toAccountId) {
+              const newBalance = (parseFloat(account.balance) + transactionAmount).toFixed(2);
+              return { ...account, balance: newBalance };
+            }
+            return account;
+          }));
+
+          // Recalculate total balance (no change to total since it's just a transfer)
+          // But we update the display for consistency
+          const total = accounts.reduce((sum, account) => {
+            return sum + (account.id === fromAccountId
+              ? parseFloat(account.balance) - transactionAmount
+              : account.id === toAccountId
+                ? parseFloat(account.balance) + transactionAmount
+                : parseFloat(account.balance));
+          }, 0);
+
+          setTotalBalance(`$${total.toFixed(2)}`);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error sending money:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedBank, forceRefresh]);
+
+  // Function to top up an account
+  const topUpAccount = useCallback(async (accountId: string, amount: string, method?: string) => {
+    try {
+      setIsLoading(true);
+
+      const response = await fetch(`/api/accounts/${selectedBank}/topup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accountId,
+          amount,
+          method: method || 'standard transfer'
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to top up account');
+      }
+
+      const result = await response.json();
+
+      // Add the new transaction to the transactions array
+      if (result.transaction) {
+        setTransactions(prevTransactions => [result.transaction, ...prevTransactions]);
+
+        // Update account balance for the topped-up account
+        const account = accounts.find(acc => acc.id === accountId);
+
+        if (account) {
+          const transactionAmount = parseFloat(amount);
+
+          // Update account with new balance
+          setAccounts(prevAccounts => prevAccounts.map(acc => {
+            if (acc.id === accountId) {
+              const newBalance = (parseFloat(acc.balance) + transactionAmount).toFixed(2);
+              return { ...acc, balance: newBalance };
+            }
+            return acc;
+          }));
+
+          // Recalculate total balance (increased by the top-up amount)
+          const total = accounts.reduce((sum, acc) => {
+            return sum + (acc.id === accountId
+              ? parseFloat(acc.balance) + transactionAmount
+              : parseFloat(acc.balance));
+          }, 0);
+
+          setTotalBalance(`$${total.toFixed(2)}`);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error topping up account:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedBank, forceRefresh]);
+
   return {
     isLoading,
     error,
@@ -872,6 +1007,8 @@ export function useBankingData() {
     refreshData: fetchData,
     forceRefresh,
     selectBank,
-    selectedBank
+    selectedBank,
+    sendMoney,
+    topUpAccount
   }
 }

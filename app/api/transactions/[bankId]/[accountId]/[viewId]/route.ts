@@ -5,10 +5,12 @@ import { NextResponse } from 'next/server';
 // Create the handler that processes the request
 const transactionsHandler = async (
   request: Request,
-  params: { bankId: string; accountId: string; viewId: string },
+  params: Promise<{ bankId: string; accountId: string; viewId: string }> | { bankId: string; accountId: string; viewId: string },
   authToken: string | null
 ) => {
-  const { bankId, accountId, viewId } = params;
+  // Await params if it's a Promise
+  const resolvedParams = await Promise.resolve(params);
+  const { bankId, accountId, viewId } = resolvedParams;
 
   if (!authToken) {
     throw new ApiError("Authentication required", 401);
