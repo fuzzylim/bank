@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: "KokonutUI Dashboard",
   description: "A modern dashboard with theme switching",
   generator: 'v0.dev',
-  metadataBase: new URL('https://localhost:3000'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://bank.presidio.com.au'),
 }
 
 export default function RootLayout({
